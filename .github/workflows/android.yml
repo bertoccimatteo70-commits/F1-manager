@@ -75,26 +75,29 @@ jobs:
           "$SDKMANAGER" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
           echo "Android SDK pronto"
 
-      - name: Diagnose toolchain
+      # gradle.org answers 504 from the runners and the image ships Gradle 9,
+      # which is incompatible with the Capacitor 6 Android Gradle plugin.
+      # Gradle 8.2.1 is fetched from a mirror instead.
+      - name: Install Gradle 8.2.1
         run: |
-          java -version
-          echo "gradle: $(command -v gradle || echo assente)"
-          gradle -v 2>/dev/null | head -8 || true
+          set -euo pipefail
+          VERSION="8.2.1"
+          mkdir -p "$HOME/gradle-dist"
+          URL_TENCENT="https://mirrors.cloud.tencent.com/gradle/gradle-${VERSION}-bin.zip"
+          URL_HUAWEI="https://repo.huaweicloud.com/gradle/gradle-${VERSION}-bin.zip"
+          if ! curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 -o /tmp/gradle.zip "$URL_TENCENT"; then
+            curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 -o /tmp/gradle.zip "$URL_HUAWEI"
+          fi
+          unzip -q /tmp/gradle.zip -d "$HOME/gradle-dist"
+          echo "$HOME/gradle-dist/gradle-${VERSION}/bin" >> "$GITHUB_PATH"
+          "$HOME/gradle-dist/gradle-${VERSION}/bin/gradle" -v
 
-      # services.gradle.org has returned 504 to the runners, so use the Gradle
-      # that ships with the runner image and fall back to the wrapper.
       - name: Build debug APK
         working-directory: android
         run: |
           set -euo pipefail
-          if command -v gradle >/dev/null 2>&1; then
-            GRADLE_CMD="gradle"
-          else
-            chmod +x gradlew
-            GRADLE_CMD="./gradlew"
-          fi
-          echo "Uso: $GRADLE_CMD"
-          "$GRADLE_CMD" assembleDebug --no-daemon --stacktrace
+          chmod +x gradlew
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: Prepare APK artifact
         run: |
