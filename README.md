@@ -184,9 +184,25 @@ La build di produzione esegue `tsc --noEmit` prima di Vite: errori di tipo blocc
 La build è un sito statico in `dist/`, servito dal Worker in `worker/index.js` (fallback SPA + asset). Può essere
 pubblicata su qualsiasi host statico o su Freebuff Sites con il manifest `sites-manifest.json`.
 
-Non esiste al momento un packaging Android nativo: il progetto non include un progetto Gradle/Android né una pipeline
-per generare un APK. L'installazione su Android avviene tramite il browser (PWA, «Aggiungi alla schermata Home»).
-Qualunque futura build APK richiederebbe l'aggiunta di un contenitore nativo e di una toolchain Android.
+### Android (APK)
+
+La build Android è gestita con **Capacitor** e dalla workflow GitHub Actions `.github/workflows/android.yml`.
+A ogni push su `main` (o avviando manualmente la workflow) GitHub compila l'APK e lo pubblica in
+**Actions → Android APK → Artifacts**, con il nome `f1-career-simulator-apk`
+(file `F1-Career-Simulator-1.0.1.apk`).
+
+L'APK è una build **debug** firmata con la chiave di debug generata da Gradle: si installa su Android abilitando
+l'installazione da origini sconosciute. Contiene lo stesso gioco della versione web, funziona offline e non richiede
+account.
+
+Per compilarlo in locale servono JDK 17 e Android SDK:
+
+```bash
+npm run android:sync   # build web + sincronizzazione del progetto nativo
+npm run android:apk    # genera android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Identificativo dell'app: `com.f1careersimulator.app`, versione `1.0.1` (versionCode 2).
 
 ## Licenza e monetizzazione
 

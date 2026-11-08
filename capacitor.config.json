@@ -1,0 +1,9 @@
+{
+  "appId": "com.f1careersimulator.app",
+  "appName": "F1 Career Simulator",
+  "webDir": "dist",
+  "backgroundColor": "#0b0e14",
+  "android": {
+    "allowMixedContent": false
+  }
+}

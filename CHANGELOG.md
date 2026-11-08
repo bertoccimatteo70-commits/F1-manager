@@ -2,6 +2,27 @@
 
 Tutte le modifiche rilevanti di F1 Career Simulator.
 
+## [1.0.1] — 2026-11-08
+
+### Corretto
+
+- La classifica finale è visibile subito dopo aver simulato una gara fino alla fine: prima del fix la schermata
+  mostrava «Risultato non disponibile» finché non si confermava il weekend. Ora la classifica provvisoria (posizioni,
+  griglia, distacchi, punti, soste, pole, giro veloce, momenti chiave) viene calcolata appena la gara termina ed è
+  disponibile anche per i salvataggi creati prima della correzione. I risultati entrano nel campionato solo alla conferma.
+
+### Aggiunto
+
+- **Progetto Android nativo con Capacitor** (`android/`, `capacitor.config.json`) e workflow GitHub Actions
+  `.github/workflows/android.yml` che compila l'APK debug e lo carica negli artifacts (`f1-career-simulator-apk`).
+- Script `npm run android:sync` e `npm run android:apk` per la build locale con JDK 17 e Android SDK.
+- Versione applicazione 1.0.1 (versionCode 2) anche nell'APK.
+
+### Note
+
+- L'APK è una build debug firmata con la chiave di debug di Gradle: installabile su Android abilitando le origini
+  sconosciute. Non è distribuito su Google Play.
+
 ## [1.0.0] — 2026-11-08
 
 Prima versione completa e giocabile.
@@ -34,4 +55,4 @@ Prima versione completa e giocabile.
 ### Note
 
 - Nessuna pubblicità, nessun acquisto in-app, nessun pay-to-win.
-- Nessun packaging APK: il gioco è distribuito come applicazione web/PWA.
+- Packaging APK: disponibile dalla versione 1.0.1 tramite la workflow GitHub Actions (build debug).
