@@ -191,6 +191,10 @@ A ogni push su `main` (o avviando manualmente la workflow) GitHub compila l'APK 
 **Actions → Android APK → Artifacts**, con il nome `f1-career-simulator-apk`
 (file `F1-Career-Simulator-1.0.1.apk`).
 
+Ultima build verificata: <https://github.com/bertoccimatteo70-commits/F1-manager/actions/runs/42470437409>
+(APK 3,7 MB, SHA-256 `c5e9208035f68e39a544d2bfc41eb93cc8199b39d6d6c38f8314cfb4e9a37fa5`).
+Anche i tag `v*` avviano la build e allegano l'APK alla release.
+
 L'APK è una build **debug** firmata con la chiave di debug generata da Gradle: si installa su Android abilitando
 l'installazione da origini sconosciute. Contiene lo stesso gioco della versione web, funziona offline e non richiede
 account.
