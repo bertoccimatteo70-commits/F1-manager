@@ -1,0 +1,21 @@
+{
+  "name": "F1 Career Simulator",
+  "short_name": "F1 Career",
+  "description": "Simulatore manageriale gratuito di carriera nel motorsport.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "lang": "it",
+  "categories": ["games", "sports"],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
