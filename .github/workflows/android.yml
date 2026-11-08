@@ -18,6 +18,11 @@ on:
 permissions:
   contents: write
 
+env:
+  GRADLE_OPTS: >-
+    -Dorg.gradle.internal.http.connectionTimeout=120000
+    -Dorg.gradle.internal.http.socketTimeout=120000
+
 jobs:
   build-apk:
     name: Build APK
@@ -70,14 +75,26 @@ jobs:
           "$SDKMANAGER" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
           echo "Android SDK pronto"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.2.1'
+      - name: Diagnose toolchain
+        run: |
+          java -version
+          echo "gradle: $(command -v gradle || echo assente)"
+          gradle -v 2>/dev/null | head -8 || true
 
+      # services.gradle.org has returned 504 to the runners, so use the Gradle
+      # that ships with the runner image and fall back to the wrapper.
       - name: Build debug APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set -euo pipefail
+          if command -v gradle >/dev/null 2>&1; then
+            GRADLE_CMD="gradle"
+          else
+            chmod +x gradlew
+            GRADLE_CMD="./gradlew"
+          fi
+          echo "Uso: $GRADLE_CMD"
+          "$GRADLE_CMD" assembleDebug --no-daemon --stacktrace
 
       - name: Prepare APK artifact
         run: |
