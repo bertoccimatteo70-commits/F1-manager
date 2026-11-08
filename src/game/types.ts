@@ -336,6 +336,8 @@ export interface WeekendState {
   qualifying: QualifyingResult | null;
   race: RaceState | null;
   setup: RaceSetup;
+  /** Classification of the finished race, available before the weekend is confirmed. */
+  result?: RaceResult | null;
 }
 
 export interface RaceSetup {

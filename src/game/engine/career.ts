@@ -44,6 +44,7 @@ import {
   suggestedSalary,
 } from './world';
 import {
+  buildRaceResult,
   createRace,
   defaultSetup,
   estimatedTyreLife,
@@ -480,7 +481,15 @@ export function simulateOneLap(save: SaveGame): SaveGame {
   const next = cloneSave(save);
   if (!next.weekend?.race) return next;
   stepLap(next.weekend.race, next.world);
+  captureWeekendResult(next);
   return next;
+}
+
+/** Stores the provisional classification as soon as the race is over. */
+function captureWeekendResult(next: SaveGame): void {
+  const weekend = next.weekend;
+  if (!weekend?.race || !weekend.race.finished || weekend.result) return;
+  weekend.result = buildRaceResult(next.world, weekend.race);
 }
 
 export function simulateRaceToEnd(save: SaveGame): SaveGame {
@@ -488,6 +497,7 @@ export function simulateRaceToEnd(save: SaveGame): SaveGame {
   const next = cloneSave(save);
   if (!next.weekend?.race) return next;
   simulateRemaining(next.weekend.race, next.world);
+  captureWeekendResult(next);
   return next;
 }
 

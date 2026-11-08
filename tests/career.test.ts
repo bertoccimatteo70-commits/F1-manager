@@ -60,6 +60,11 @@ describe('carriera pilota', () => {
     expect(save.weekend?.race?.lap).toBe(1);
     save = simulateRaceToEnd(save);
     expect(save.weekend?.race?.finished).toBe(true);
+    // The classification is available before the weekend is confirmed...
+    expect(save.weekend?.result?.rows.length).toBe(22);
+    expect(save.weekend?.result?.rows[0].position).toBe(1);
+    // ...but it only enters the championship on confirmation.
+    expect(save.world.series.F3.results.length).toBe(0);
     const moneyBefore = save.player.kind === 'driver' ? save.player.money : 0;
     save = finishWeekend(save);
     expect(save.phase).toBe('season');

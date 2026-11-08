@@ -40,6 +40,12 @@ npm test           # suite di test (Vitest)
 Il gioco è una PWA: dopo il primo caricamento da un server HTTP può essere installato sul dispositivo e usato
 offline. Non richiede account, backend o connessione.
 
+### Gioca subito nel browser
+
+La build completa è pubblicata qui: <https://site-eabe396679a748adb4d7ba6f050b47f3.freebuff.page>
+
+I salvataggi restano nel browser del dispositivo; nessun dato viene inviato a un server.
+
 ---
 
 ## Carriera pilota

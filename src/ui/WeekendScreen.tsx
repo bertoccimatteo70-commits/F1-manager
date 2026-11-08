@@ -11,7 +11,7 @@ import {
   teamLabel,
   updateWeekendSetup,
 } from '../game/engine/career';
-import { addPlannedStop, raceOrder, weatherLabel } from '../game/engine/race';
+import { addPlannedStop, buildRaceResult, raceOrder, weatherLabel } from '../game/engine/race';
 import { circuitCountry } from '../game/data/catalog';
 import { COMPOUND_COLOR, describeEvent, formatGap, formatLap } from '../game/engine/format';
 import { t } from '../game/names/registry';
@@ -639,7 +639,10 @@ function RaceClassification({ save, onUpdate }: { save: SaveGame; onUpdate: Upda
   const series = category ? save.world.series[category] : null;
   if (!weekend || !series) return <Empty title="Gara non disponibile" />;
   const round = series.calendar[weekend.roundIndex];
-  const result = series.results.find((entry) => entry.roundIndex === weekend.roundIndex);
+  const result =
+    weekend.result ??
+    (weekend.race?.finished ? buildRaceResult(save.world, weekend.race) : undefined) ??
+    series.results.find((entry) => entry.roundIndex === weekend.roundIndex);
   const playerIds = playerDriverIdsOf(save);
   const rows: RaceResultRow[] = result?.rows ?? [];
   const fastest = result?.fastestLapDriverId;

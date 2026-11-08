@@ -599,7 +599,11 @@ export function addPlannedStop(race: RaceState, driverId: string, lap: number, c
   car.plannedStops.sort((a, b) => a.lap - b.lap);
 }
 
-export function finalizeRace(world: World, race: RaceState): RaceResult {
+/**
+ * Builds the classification of a finished race without touching the championship.
+ * Used to show the result before the weekend is confirmed.
+ */
+export function buildRaceResult(world: World, race: RaceState): RaceResult {
   const series = world.series[race.category];
   const round = series.calendar[race.roundIndex];
   const order = raceOrder(race);
@@ -637,7 +641,7 @@ export function finalizeRace(world: World, race: RaceState): RaceResult {
     ['sc', 'vsc', 'rain-start', 'rain-stop', 'dnf-crash', 'dnf-mechanical', 'dnf-fuel', 'finish'].includes(e.code)
   );
 
-  const result: RaceResult = {
+  return {
     season: world.season,
     category: race.category,
     roundIndex: race.roundIndex,
@@ -649,12 +653,21 @@ export function finalizeRace(world: World, race: RaceState): RaceResult {
     rows,
     keyEvents: keyEvents.slice(0, 14),
   };
+}
 
+/** Persists a finished race into its championship and advances the round. */
+export function finalizeRace(world: World, race: RaceState): RaceResult {
+  const result = buildRaceResult(world, race);
+  const series = world.series[race.category];
   if (!series.results.some((r) => r.roundIndex === race.roundIndex)) {
     series.results.push(result);
     series.qualifying[race.roundIndex] = series.qualifying[race.roundIndex] ?? {
       roundIndex: race.roundIndex,
-      order: order.map((car, i) => ({ driverId: car.driverId, time: car.bestLap || 0, position: i + 1 })),
+      order: result.rows.map((row) => ({
+        driverId: row.driverId,
+        time: race.cars.find((car) => car.driverId === row.driverId)?.bestLap ?? 0,
+        position: row.position,
+      })),
     };
     series.roundIndex += 1;
   }
