@@ -11,6 +11,8 @@ import { SettingsScreen } from './ui/SettingsScreen';
 import { NameEditor } from './ui/NameEditor';
 import { AboutScreen } from './ui/AboutScreen';
 import { CareerScreen } from './ui/CareerScreen';
+import { Toaster, toast } from './ui/toast';
+import { installUiSounds, setSoundEnabled } from './ui/sound';
 
 type View = 'menu' | 'new' | 'saves' | 'settings' | 'names' | 'about' | 'career';
 
@@ -43,10 +45,14 @@ export function App() {
 
   const load = (id: string) => {
     const loaded = loadGame(id);
-    if (!loaded) return;
+    if (!loaded) {
+      toast('Salvataggio non leggibile', 'bad');
+      return;
+    }
     setSave(loaded);
     setView('career');
     refreshMetas();
+    toast('Carriera caricata', 'good');
   };
 
   const createDriver = (input: NewDriverInput) => {
@@ -55,6 +61,7 @@ export function App() {
     setSave(created);
     setView('career');
     refreshMetas();
+    toast('Nuova carriera pilota avviata', 'good');
   };
 
   const createTeam = (input: NewTeamInput) => {
@@ -63,6 +70,7 @@ export function App() {
     setSave(created);
     setView('career');
     refreshMetas();
+    toast('Nuova scuderia fondata', 'good');
   };
 
   const manualSave = () => {
@@ -81,6 +89,18 @@ export function App() {
   };
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = settings.theme;
+    root.dataset.density = settings.density;
+    root.dataset.motion = settings.animations ? 'on' : 'off';
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', settings.theme === 'light' ? '#eef1f7' : '#0b0e14');
+    setSoundEnabled(settings.sound);
+  }, [settings]);
+
+  useEffect(() => installUiSounds(), []);
+
+  useEffect(() => {
     const onHide = () => {
       if (autosaveRef.current && saveRef.current && document.visibilityState === 'hidden') {
         saveGame(saveRef.current);
@@ -94,6 +114,12 @@ export function App() {
     if (view === 'saves' || view === 'menu') refreshMetas();
   }, [view, refreshMetas]);
 
+  const toggleTheme = () => {
+    const theme = settings.theme === 'dark' ? 'light' : 'dark';
+    changeSettings({ ...settings, theme });
+    toast(theme === 'dark' ? 'Tema scuro attivo' : 'Tema chiaro attivo', 'info');
+  };
+
   return (
     <div className="app">
       {view === 'menu' && (
@@ -106,9 +132,18 @@ export function App() {
           onNames={() => setView('names')}
           onAbout={() => setView('about')}
           overrideCount={overrideCount()}
+          theme={settings.theme}
+          onToggleTheme={toggleTheme}
         />
       )}
-      {view === 'new' && <NewCareer onBack={() => setView('menu')} onCreateDriver={createDriver} onCreateTeam={createTeam} />}
+      {view === 'new' && (
+        <NewCareer
+          onBack={() => setView('menu')}
+          onCreateDriver={createDriver}
+          onCreateTeam={createTeam}
+          defaultDifficulty={settings.difficulty}
+        />
+      )}
       {view === 'saves' && (
         <SavesScreen
           metas={metas}
@@ -117,20 +152,32 @@ export function App() {
           onDelete={(id) => {
             deleteSave(id);
             refreshMetas();
+            toast('Salvataggio eliminato', 'warn');
           }}
           onRename={(id, name) => {
             renameSave(id, name);
             refreshMetas();
+            toast('Salvataggio rinominato', 'good');
           }}
           onCreate={() => setView('new')}
         />
       )}
-      {view === 'settings' && <SettingsScreen settings={settings} onChange={changeSettings} onBack={() => setView('menu')} />}
+      {view === 'settings' && (
+        <SettingsScreen settings={settings} onChange={changeSettings} onBack={() => setView('menu')} />
+      )}
       {view === 'names' && <NameEditor onBack={() => setView('menu')} />}
       {view === 'about' && <AboutScreen onBack={() => setView('menu')} />}
       {view === 'career' && save && (
-        <CareerScreen save={save} settings={settings} onUpdate={update} onMenu={backToMenu} onSave={manualSave} />
+        <CareerScreen
+          save={save}
+          settings={settings}
+          onUpdate={update}
+          onMenu={backToMenu}
+          onSave={manualSave}
+          onToggleTheme={toggleTheme}
+        />
       )}
+      <Toaster />
     </div>
   );
 }

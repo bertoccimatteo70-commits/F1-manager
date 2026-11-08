@@ -2,6 +2,30 @@
 
 Tutte le modifiche rilevanti di F1 Career Simulator.
 
+## [1.1.0] — 2026-11-08
+
+### Interfaccia
+
+- **Design system completo**: tema scuro predefinito, tema chiaro selezionabile, densità comoda/compatta, animazioni
+disattivabili, tipografia leggibile e componenti coerenti (schede, pulsanti, badge, tabelle, barre, tooltip).
+- **Navigazione a gruppi** (Paddock, Gestione, Mondo, Identità) con barra mobile dedicata e pannello «Altro».
+- **Dashboard rinnovata**: indicatori di posizione, distacco, budget, prossimo round e punti sviluppo; grafico dei punti
+cumulati, forma delle ultime gare, obiettivo stagionale con avanzamento, contratto/bilancio e notizie.
+- **Nuove sezioni**: Contratti (clausole, rinnovi, rescissioni, storico stipendi), Personalizzazione (colori, emblema,
+casco e numero), Archivio (stagioni, record, risultati gara per gara) e Notizie (filtri per tipo e non lette).
+- **Mercato piloti con ricerca e filtri** (nome, overall minimo, età massima, ordinamento) e trattative invariate.
+- **Weekend**: pannello Prove libere con dati reali del circuito e applicazione del setup consigliato; gara con
+variazione posizioni, barra di avanzamento e cronaca.
+- **Impostazioni complete**: grafica, audio sintetizzato con prova, lingua (italiano attivo), difficoltà predefinita,
+gara, salvataggi e privacy. Notifiche toast per conferme ed errori.
+- **Responsive** per desktop, tablet e telefono; bersagli touch più grandi e tabelle scorrevoli.
+
+### Corretto
+
+- Distacco dalla vetta mostrato come «Leader» o «−0» a inizio stagione.
+- Etichette con plurali errati («1 stagioni», «1 gare», «1 comunicazioni»).
+- Spaziatura tra nome squadra e categoria nella scheda contratto del mercato.
+
 ## [1.0.1] — 2026-11-08
 
 ### Corretto

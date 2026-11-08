@@ -34,10 +34,12 @@ export function NewCareer({
   onBack,
   onCreateDriver,
   onCreateTeam,
+  defaultDifficulty = 'normal',
 }: {
   onBack: () => void;
   onCreateDriver: (input: NewDriverInput) => void;
   onCreateTeam: (input: NewTeamInput) => void;
+  defaultDifficulty?: 'easy' | 'normal' | 'hard';
 }) {
   const [mode, setMode] = useState<'choose' | 'driver' | 'team'>('choose');
 
@@ -98,13 +100,23 @@ export function NewCareer({
         </div>
       )}
 
-      {mode === 'driver' && <DriverForm onBack={() => setMode('choose')} onCreate={onCreateDriver} />}
+      {mode === 'driver' && (
+        <DriverForm onBack={() => setMode('choose')} onCreate={onCreateDriver} defaultDifficulty={defaultDifficulty} />
+      )}
       {mode === 'team' && <TeamForm onBack={() => setMode('choose')} onCreate={onCreateTeam} />}
     </div>
   );
 }
 
-function DriverForm({ onBack, onCreate }: { onBack: () => void; onCreate: (input: NewDriverInput) => void }) {
+function DriverForm({
+  onBack,
+  onCreate,
+  defaultDifficulty,
+}: {
+  onBack: () => void;
+  onCreate: (input: NewDriverInput) => void;
+  defaultDifficulty: 'easy' | 'normal' | 'hard';
+}) {
   const [first, setFirst] = useState('');
   const [last, setLast] = useState('');
   const [nat, setNat] = useState('IT');
@@ -112,7 +124,7 @@ function DriverForm({ onBack, onCreate }: { onBack: () => void; onCreate: (input
   const [number, setNumber] = useState(27);
   const [helmet, setHelmet] = useState(HELMET_COLORS[0]);
   const [category, setCategory] = useState<Category>('F3');
-  const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard'>('normal');
+  const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard'>(defaultDifficulty);
   const [error, setError] = useState('');
 
   const submit = () => {

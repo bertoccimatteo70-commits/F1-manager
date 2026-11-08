@@ -149,6 +149,11 @@ export const DEFAULT_SETTINGS: GlobalSettings = {
   autosave: true,
   simSpeed: 400,
   showHints: true,
+  theme: 'dark',
+  density: 'comfortable',
+  animations: true,
+  sound: true,
+  difficulty: 'normal',
 };
 
 export function loadSettings(): GlobalSettings {

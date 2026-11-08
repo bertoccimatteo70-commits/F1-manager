@@ -1598,6 +1598,70 @@ export function economicSnapshot(save: SaveGame): {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Contracts & identity
+// ---------------------------------------------------------------------------
+
+/** Extends a driver contract by one season with an 8% raise. */
+export function renewContract(save: SaveGame, driverId: string): SaveGame {
+  const next = cloneSave(save);
+  if (next.player.kind !== 'team') return next;
+  const team = playerTeamOf(next);
+  const driver = next.world.drivers[driverId];
+  if (!team || !driver) return next;
+  const contract = Object.values(next.world.contracts).find(
+    (entry) => entry.driverId === driverId && entry.teamId === team.id && entry.endSeason >= next.world.season
+  );
+  if (!contract) return next;
+  const raise = Math.round((contract.salary * 0.08) / 10_000) * 10_000;
+  if (team.budget < raise) {
+    addNews(next, 'finance', 'Budget insufficiente per il rinnovo di {driver}.', { driver: driverId });
+    return next;
+  }
+  contract.endSeason += 1;
+  contract.seasons += 1;
+  contract.salary += raise;
+  addNews(next, 'contract', '{team} rinnova con {driver} fino al {value}.', {
+    driver: driverId,
+    team: team.id,
+    value: String(contract.endSeason),
+  });
+  return next;
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/** Updates the player team livery: primary/secondary colour and emblem. */
+export function updateTeamIdentity(
+  save: SaveGame,
+  patch: { color?: string; accent?: string; logo?: string }
+): SaveGame {
+  const next = cloneSave(save);
+  if (next.player.kind !== 'team') return next;
+  const team = playerTeamOf(next);
+  if (!team) return next;
+  if (patch.color && HEX.test(patch.color)) team.color = patch.color;
+  if (patch.accent && HEX.test(patch.accent)) team.accent = patch.accent;
+  if (patch.logo) team.logo = patch.logo;
+  return next;
+}
+
+/** Updates the player driver helmet colour and race number. */
+export function updateDriverIdentity(
+  save: SaveGame,
+  patch: { helmet?: string; number?: number }
+): SaveGame {
+  const next = cloneSave(save);
+  if (next.player.kind !== 'driver') return next;
+  const driver = playerDriverOf(next);
+  if (!driver) return next;
+  if (patch.helmet && HEX.test(patch.helmet)) driver.helmet = patch.helmet;
+  if (typeof patch.number === 'number' && patch.number >= 1 && patch.number <= 99) {
+    driver.number = Math.round(patch.number);
+  }
+  return next;
+}
+
 export function prizePoolFor(category: Category): number {
   return CATEGORY_PRIZE_POOL[category];
 }

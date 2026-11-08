@@ -332,6 +332,70 @@ export function Select({
   );
 }
 
+export function InfoHint({ text, label = 'Maggiori informazioni' }: { text: string; label?: string }) {
+  return (
+    <span className="info-hint" tabIndex={0} role="note" aria-label={label} data-tip={text}>
+      i
+    </span>
+  );
+}
+
+export function Sparkline({
+  values,
+  color = 'var(--accent-2)',
+  height = 42,
+  label,
+}: {
+  values: number[];
+  color?: string;
+  height?: number;
+  label?: string;
+}) {
+  if (values.length === 0) return <span className="muted small">Nessun dato</span>;
+  const width = 220;
+  const max = Math.max(1, ...values);
+  const min = Math.min(0, ...values);
+  const span = Math.max(1, max - min);
+  const points = values.map((value, index) => {
+    const x = values.length === 1 ? width : (index / (values.length - 1)) * width;
+    const y = height - ((value - min) / span) * (height - 6) - 3;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const area = `0,${height} ${points.join(' ')} ${width},${height}`;
+  return (
+    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label ?? 'Andamento'} preserveAspectRatio="none">
+      <polygon points={area} fill={color} opacity="0.14" />
+      <polyline points={points.join(' ')} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function MiniBars({
+  values,
+  color = 'var(--accent)',
+  labels,
+  height = 54,
+}: {
+  values: number[];
+  color?: string;
+  labels?: string[];
+  height?: number;
+}) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className="mini-bars" style={{ height }}>
+      {values.map((value, index) => (
+        <span
+          key={index}
+          className="mini-bar"
+          style={{ height: `${Math.max(4, (value / max) * 100)}%`, background: color }}
+          title={`${labels?.[index] ?? ''} ${Math.round(value)}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function ConfirmButton({
   label,
   confirmLabel,

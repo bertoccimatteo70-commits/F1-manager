@@ -132,6 +132,10 @@ function TeamMarket({ save, onUpdate }: { save: SaveGame; onUpdate: Updater }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [salary, setSalary] = useState(0);
   const [seasons, setSeasons] = useState(1);
+  const [query, setQuery] = useState('');
+  const [minOverall, setMinOverall] = useState(0);
+  const [maxAge, setMaxAge] = useState(40);
+  const [sort, setSort] = useState<'overall' | 'age' | 'price'>('overall');
 
   const freeAgents = useMemo(
     () =>
@@ -145,6 +149,24 @@ function TeamMarket({ save, onUpdate }: { save: SaveGame; onUpdate: Updater }) {
   const drivers = team.driverIds.filter(Boolean) as string[];
   const openSeat = team.driverIds.some((id) => id === null);
   const selectedDriver = selected ? save.world.drivers[selected] : null;
+  const filteredFreeAgents = freeAgents
+    .filter((driver) => {
+      const q = query.trim().toLowerCase();
+      if (q && !driverName(save.world, driver.id).toLowerCase().includes(q)) return false;
+      if (overallRating(driver) < minOverall) return false;
+      if (driver.age > maxAge) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sort === 'age') return a.age - b.age;
+      if (sort === 'price') {
+        return (
+          suggestedSalary(a.reputation, team.category, team.reputation) -
+          suggestedSalary(b.reputation, team.category, team.reputation)
+        );
+      }
+      return overallRating(b) - overallRating(a);
+    });
 
   const openSign = (driverId: string) => {
     const driver = save.world.drivers[driverId];
@@ -206,7 +228,53 @@ function TeamMarket({ save, onUpdate }: { save: SaveGame; onUpdate: Updater }) {
         )}
       </Panel>
 
-      <Panel title="Mercato piloti" subtitle="Piloti senza contratto, pronti a firmare">
+      <Panel title="Mercato piloti" subtitle={`${filteredFreeAgents.length} piloti liberi corrispondono ai filtri`}>
+        <div className="market-toolbar">
+          <input
+            className="input search-input"
+            placeholder="Cerca pilota per nome…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <label className="filter-field">
+            <span>Overall min</span>
+            <input
+              className="range"
+              type="range"
+              min={0}
+              max={95}
+              step={5}
+              value={minOverall}
+              onChange={(e) => setMinOverall(Number(e.target.value))}
+            />
+            <strong>{minOverall}</strong>
+          </label>
+          <label className="filter-field">
+            <span>Età max</span>
+            <input
+              className="range"
+              type="range"
+              min={18}
+              max={40}
+              step={1}
+              value={maxAge}
+              onChange={(e) => setMaxAge(Number(e.target.value))}
+            />
+            <strong>{maxAge}</strong>
+          </label>
+          <div className="segmented small">
+            <button className={`seg ${sort === 'overall' ? 'is-active' : ''}`} onClick={() => setSort('overall')}>
+              Overall
+            </button>
+            <button className={`seg ${sort === 'age' ? 'is-active' : ''}`} onClick={() => setSort('age')}>
+              Età
+            </button>
+            <button className={`seg ${sort === 'price' ? 'is-active' : ''}`} onClick={() => setSort('price')}>
+              Costo
+            </button>
+          </div>
+        </div>
+        <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -221,7 +289,7 @@ function TeamMarket({ save, onUpdate }: { save: SaveGame; onUpdate: Updater }) {
             </tr>
           </thead>
           <tbody>
-            {freeAgents.map((driver) => {
+            {filteredFreeAgents.map((driver) => {
               const demand = suggestedSalary(driver.reputation, team.category, team.reputation);
               return (
                 <tr key={driver.id}>
@@ -242,7 +310,10 @@ function TeamMarket({ save, onUpdate }: { save: SaveGame; onUpdate: Updater }) {
             })}
           </tbody>
         </table>
-        {freeAgents.length === 0 && <Empty title="Mercato vuoto">Nessun pilota disponibile in questo momento.</Empty>}
+        </div>
+        {filteredFreeAgents.length === 0 && (
+          <Empty title="Nessun pilota trovato">Allarga i filtri o cancella la ricerca.</Empty>
+        )}
       </Panel>
 
       <Panel title="Sponsor" subtitle={`${team.sponsorDeals.length}/4 contratti attivi`}>

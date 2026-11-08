@@ -1,7 +1,7 @@
 {
   "name": "f1-career-simulator",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "F1 Career Simulator - simulatore manageriale di carriera nel motorsport (gratuito, offline)",
   "type": "module",
   "license": "AGPL-3.0-or-later",

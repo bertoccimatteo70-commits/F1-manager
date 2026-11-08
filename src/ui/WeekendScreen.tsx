@@ -12,7 +12,7 @@ import {
   updateWeekendSetup,
 } from '../game/engine/career';
 import { addPlannedStop, buildRaceResult, raceOrder, weatherLabel } from '../game/engine/race';
-import { circuitCountry } from '../game/data/catalog';
+import { CIRCUITS, circuitCountry } from '../game/data/catalog';
 import { COMPOUND_COLOR, describeEvent, formatGap, formatLap } from '../game/engine/format';
 import { t } from '../game/names/registry';
 import {
@@ -139,6 +139,10 @@ function QualifyingSetup({ save, onUpdate }: { save: SaveGame; onUpdate: Updater
   const setup = weekend.setup;
 
   const update = (patch: Partial<typeof setup>) => onUpdate(updateWeekendSetup(save, patch), false);
+  const circuit = CIRCUITS.find((entry) => entry.id === round.circuitId);
+  const practiceLaps = Math.max(6, Math.round((round.laps * weekend.pct) / 100));
+  const recommendedCompound: Compound = circuit && circuit.abrasion > 0.78 ? 'hard' : circuit && circuit.abrasion > 0.58 ? 'medium' : 'soft';
+  const recommendedStops = circuit && circuit.abrasion > 0.8 ? 2 : circuit && circuit.abrasion > 0.55 ? 1 : 0;
 
   return (
     <div className="weekend-grid">
@@ -192,6 +196,60 @@ function QualifyingSetup({ save, onUpdate }: { save: SaveGame; onUpdate: Updater
       </Panel>
 
       <div className="stack">
+        {circuit && (
+          <Panel
+            title="Prove libere"
+            subtitle={`${practiceLaps} giri di riferimento · dati rilevati sul circuito`}
+            actions={<Badge tone="info">FP</Badge>}
+          >
+            <div className="practice-stats">
+              <div>
+                <span className="muted small">Giro di riferimento</span>
+                <strong>{formatLap(circuit.baseLap)}</strong>
+              </div>
+              <div>
+                <span className="muted small">Degrado gomme</span>
+                <strong>{Math.round(circuit.abrasion * 100)}%</strong>
+                <Bar value={circuit.abrasion * 100} color="var(--warn)" height={4} />
+              </div>
+              <div>
+                <span className="muted small">Sorpassi</span>
+                <strong>{Math.round(circuit.overtaking * 100)}%</strong>
+                <Bar value={circuit.overtaking * 100} color="var(--accent-2)" height={4} />
+              </div>
+              <div>
+                <span className="muted small">Pioggia</span>
+                <strong>{Math.round(circuit.rainChance * 100)}%</strong>
+              </div>
+              <div>
+                <span className="muted small">Pit lane</span>
+                <strong>{circuit.pitLoss}s</strong>
+              </div>
+            </div>
+            <div className="practice-plan">
+              <span>
+                Consigliato: <strong>{COMPOUND_OPTIONS.find((option) => option.value === recommendedCompound)?.label}</strong> ·{' '}
+                <strong>{recommendedStops}</strong> sost{recommendedStops === 1 ? 'a' : 'e'} ·{' '}
+                {circuit.overtaking > 0.65 ? 'approccio aggressivo' : 'gestione delle gomme'}
+              </span>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() =>
+                  update({
+                    compound: recommendedCompound,
+                    secondCompound: recommendedCompound === 'hard' ? 'medium' : 'soft',
+                    stops: recommendedStops,
+                    fuelMargin: 1.5,
+                    aggression: circuit.overtaking > 0.65 ? 'aggressive' : 'balanced',
+                  })
+                }
+              >
+                Applica setup consigliato
+              </button>
+            </div>
+          </Panel>
+        )}
+
         <Panel title="Strategia di gara" subtitle="Le scelte valgono per tutta la squadra">
           <div className="setup-form">
             <Field label="Gomma di partenza">
@@ -356,6 +414,9 @@ function LiveRace({ save, settings, onUpdate }: { save: SaveGame; settings: Glob
           <span className="race-lap">
             Giro <strong>{Math.min(race.lap + 1, race.lapsTotal)}</strong> / {race.lapsTotal}
           </span>
+          <span className="race-progress" aria-hidden>
+            <Bar value={(race.lap / Math.max(1, race.lapsTotal)) * 100} color="var(--accent)" height={4} />
+          </span>
           <FlagTag flag={race.flag} />
           <Badge tone={race.wetness > 0.3 ? 'info' : 'muted'}>{weatherLabel(race.wetness)}</Badge>
           <span className="muted small">{race.temperature}°C · Safety Car: {race.safetyCars}</span>
@@ -389,6 +450,7 @@ function LiveRace({ save, settings, onUpdate }: { save: SaveGame; settings: Glob
                 <thead>
                   <tr>
                     <th>P</th>
+                    <th>Δ</th>
                     <th>Pilota</th>
                     <th>Squadra</th>
                     <th className="num">Distacco</th>
@@ -404,10 +466,16 @@ function LiveRace({ save, settings, onUpdate }: { save: SaveGame; settings: Glob
                     const team = save.world.teams[car.teamId];
                     const gap = leader && car.status !== 'retired' ? Math.max(0, car.totalTime + car.penalty - (leader.totalTime + leader.penalty)) : 0;
                     const isPlayer = playerIds.includes(car.driverId);
+                    const delta = car.grid - (index + 1);
                     return (
                       <tr key={car.driverId} className={isPlayer ? 'is-me' : ''}>
                         <td>
                           <PositionBadge position={index + 1} />
+                        </td>
+                        <td className="num">
+                          <span className={`delta ${delta > 0 ? 'delta-up' : delta < 0 ? 'delta-down' : ''}`}>
+                            {delta > 0 ? `▲${delta}` : delta < 0 ? `▼${Math.abs(delta)}` : '–'}
+                          </span>
                         </td>
                         <td>
                           <div className="table-name">

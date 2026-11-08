@@ -363,6 +363,8 @@ export interface SaveGame {
   weekend: WeekendState | null;
   offers: Offer[];
   seed: number;
+  /** Number of news items already opened, used for the unread badge. */
+  newsSeenCount?: number;
 }
 
 export interface GlobalSettings {
@@ -370,4 +372,11 @@ export interface GlobalSettings {
   autosave: boolean;
   simSpeed: number;
   showHints: boolean;
+  /** Interface theme; dark is the default motorsport look. */
+  theme: 'dark' | 'light';
+  density: 'comfortable' | 'compact';
+  animations: boolean;
+  sound: boolean;
+  /** Default difficulty proposed when a new career is created. */
+  difficulty: 'easy' | 'normal' | 'hard';
 }

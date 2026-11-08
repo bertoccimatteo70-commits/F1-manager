@@ -1,7 +1,6 @@
 import React from 'react';
 import type { SaveMeta } from '../game/save/storage';
 import { APP_TAGLINE, APP_VERSION } from '../game/version';
-import { formatMoney } from '../game/engine/format';
 import { Badge } from './components';
 
 export function MainMenu({
@@ -13,6 +12,8 @@ export function MainMenu({
   onNames,
   onAbout,
   overrideCount,
+  theme,
+  onToggleTheme,
 }: {
   latest: SaveMeta | null;
   onNew: () => void;
@@ -22,6 +23,8 @@ export function MainMenu({
   onNames: () => void;
   onAbout: () => void;
   overrideCount: number;
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
 }) {
   return (
     <div className="menu-screen">
@@ -29,12 +32,17 @@ export function MainMenu({
       <div className="menu-content">
         <div className="menu-topline">
           <span className="brand-mark">
-            <span className="brand-mark-bar" style={{ background: '#e10600' }} />
-            <span className="brand-mark-bar" style={{ background: '#ffffff' }} />
-            <span className="brand-mark-bar" style={{ background: '#00d2be' }} />
+            <span className="brand-mark-bar" style={{ background: 'var(--accent)' }} />
+            <span className="brand-mark-bar" style={{ background: 'var(--text)' }} />
+            <span className="brand-mark-bar" style={{ background: 'var(--accent-2)' }} />
           </span>
           <span className="menu-topline-text">Simulatore manageriale · Stagione 2026</span>
-          <Badge tone="muted">v{APP_VERSION}</Badge>
+          <div className="menu-topline-actions">
+            <Badge tone="muted">v{APP_VERSION}</Badge>
+            <button className="icon-btn" onClick={onToggleTheme} aria-label="Cambia tema" title={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}>
+              {theme === 'dark' ? '☀' : '☾'}
+            </button>
+          </div>
         </div>
 
         <div className="hero">
@@ -68,7 +76,9 @@ export function MainMenu({
               <div className="continue-card">
                 <div className="continue-head">
                   <span className="continue-label">Ultimo salvataggio</span>
-                  <span className="continue-phase">{latest.phase === 'weekend' ? 'Weekend' : latest.phase === 'offseason' ? 'Mercato' : 'Stagione'} {latest.season}</span>
+                  <span className="continue-phase">
+                    {latest.phase === 'weekend' ? 'Weekend' : latest.phase === 'offseason' ? 'Mercato' : latest.phase === 'ended' ? 'Conclusa' : 'Stagione'} {latest.season}
+                  </span>
                 </div>
                 <strong className="continue-name">{latest.name}</strong>
                 <span className="continue-meta">
@@ -125,7 +135,7 @@ export function MainMenu({
           <button className="menu-card" onClick={onSettings}>
             <span className="menu-card-icon">⚙</span>
             <strong>Impostazioni</strong>
-            <small>Distanza gara, velocità di simulazione, autosalvataggio</small>
+            <small>Tema, audio, lingua, difficoltà e simulazione</small>
           </button>
           <button className="menu-card" onClick={onAbout}>
             <span className="menu-card-icon">ⓘ</span>

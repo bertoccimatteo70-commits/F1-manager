@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Category, GlobalSettings, SaveGame } from '../game/types';
 import type { StandingRow } from '../game/engine/world';
 import {
@@ -8,7 +8,6 @@ import {
   economicSnapshot,
   nextRoundOf,
   playerCategoryOf,
-  playerDriverIdsOf,
   playerDriverOf,
   playerSeriesOf,
   playerTeamOf,
@@ -16,27 +15,69 @@ import {
   spendSkillPoint,
   teamLabel,
 } from '../game/engine/career';
-import { circuitCountry, CATEGORY_LABEL } from '../game/data/catalog';
+import { CIRCUITS, circuitCountry, CATEGORY_LABEL } from '../game/data/catalog';
 import { computeStandings, overallRating } from '../game/engine/world';
-import { countryFlag, formatGap, formatMoney, ordinal, phaseLabel } from '../game/engine/format';
+import { countryFlag, formatGap, formatMoney, phaseLabel } from '../game/engine/format';
 import { t } from '../game/names/registry';
-import { Badge, Bar, Empty, Money, NationFlag, Panel, PositionBadge, Stat, TeamDot, TeamLogo } from './components';
+import {
+  Badge,
+  Bar,
+  Empty,
+  MiniBars,
+  Modal,
+  Money,
+  NationFlag,
+  Panel,
+  PositionBadge,
+  Sparkline,
+  Stat,
+  TeamDot,
+  TeamLogo,
+} from './components';
 import { driverName, newsText, useNames } from './helpers';
 import { FinanceTab, MarketTab, OffseasonPanel, DevelopmentTab, StaffTab } from './CareerManagement';
+import { ArchiveTab, ContractsTab, CustomizeTab, NewsTab } from './CareerSections';
 import { WeekendScreen } from './WeekendScreen';
+import { toast } from './toast';
 
-type Tab = 'dashboard' | 'calendar' | 'standings' | 'market' | 'finance' | 'development' | 'staff' | 'profile';
+type Tab =
+  | 'dashboard'
+  | 'calendar'
+  | 'standings'
+  | 'market'
+  | 'contracts'
+  | 'finance'
+  | 'development'
+  | 'staff'
+  | 'profile'
+  | 'news'
+  | 'archive'
+  | 'customize';
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: '◈' },
-  { id: 'calendar', label: 'Calendario', icon: '▦' },
-  { id: 'standings', label: 'Classifiche', icon: '≡' },
-  { id: 'market', label: 'Mercato', icon: '⇄' },
-  { id: 'finance', label: 'Finanze', icon: '€' },
-  { id: 'development', label: 'Sviluppo', icon: '⚙' },
-  { id: 'staff', label: 'Staff', icon: '☰' },
-  { id: 'profile', label: 'Profilo', icon: '◇' },
+interface NavEntry {
+  id: Tab;
+  label: string;
+  icon: string;
+  group: 'Paddock' | 'Gestione' | 'Mondo' | 'Identità';
+  teamOnly?: boolean;
+}
+
+const NAV: NavEntry[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: '◈', group: 'Paddock' },
+  { id: 'calendar', label: 'Calendario', icon: '▦', group: 'Paddock' },
+  { id: 'standings', label: 'Classifiche', icon: '≡', group: 'Paddock' },
+  { id: 'market', label: 'Mercato', icon: '⇄', group: 'Gestione' },
+  { id: 'contracts', label: 'Contratti', icon: '✎', group: 'Gestione' },
+  { id: 'finance', label: 'Finanze', icon: '€', group: 'Gestione' },
+  { id: 'development', label: 'Sviluppo', icon: '⚙', group: 'Gestione', teamOnly: true },
+  { id: 'staff', label: 'Staff', icon: '☰', group: 'Gestione', teamOnly: true },
+  { id: 'news', label: 'Notizie', icon: '◉', group: 'Mondo' },
+  { id: 'archive', label: 'Archivio', icon: '▤', group: 'Mondo' },
+  { id: 'profile', label: 'Profilo', icon: '◇', group: 'Identità' },
+  { id: 'customize', label: 'Personalizza', icon: '◐', group: 'Identità' },
 ];
+
+const MOBILE_PRIMARY: Tab[] = ['dashboard', 'calendar', 'standings', 'market'];
 
 export function CareerScreen({
   save,
@@ -44,23 +85,26 @@ export function CareerScreen({
   onUpdate,
   onMenu,
   onSave,
+  onToggleTheme,
 }: {
   save: SaveGame;
   settings: GlobalSettings;
   onUpdate: (next: SaveGame, persist?: boolean) => void;
   onMenu: () => void;
   onSave: () => void;
+  onToggleTheme: () => void;
 }) {
   useNames();
   const [tab, setTab] = useState<Tab>('dashboard');
+  const [moreOpen, setMoreOpen] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const isDriver = save.player.kind === 'driver';
   const team = playerTeamOf(save);
   const driver = playerDriverOf(save);
   const category = playerCategoryOf(save);
   const series = playerSeriesOf(save);
-  const playerTeam = team;
-  const money = isDriver ? (save.player.kind === 'driver' ? save.player.money : 0) : playerTeam?.budget ?? 0;
+  const money = isDriver ? (save.player.kind === 'driver' ? save.player.money : 0) : team?.budget ?? 0;
+  const unread = Math.max(0, save.news.length - (save.newsSeenCount ?? 0));
 
   if (save.phase === 'weekend' && save.weekend) {
     return (
@@ -80,20 +124,25 @@ export function CareerScreen({
   const saveNow = () => {
     onSave();
     setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 1800);
+    toast('Partita salvata sul dispositivo', 'good');
+    window.setTimeout(() => setSavedFlash(false), 1800);
   };
 
-  const tabs = TABS.filter((item) => {
-    if (item.id === 'development' || item.id === 'staff') return save.player.kind === 'team';
-    return true;
-  });
+  const entries = NAV.filter((item) => (item.teamOnly ? save.player.kind === 'team' : true));
+  const groups = ['Paddock', 'Gestione', 'Mondo', 'Identità'] as const;
+  const current = entries.find((entry) => entry.id === tab) ?? entries[0];
+
+  const selectTab = (next: Tab) => {
+    setTab(next);
+    setMoreOpen(false);
+  };
 
   return (
     <div className="career-shell">
       <header className="career-topbar">
         <div className="career-identity">
-          {save.player.kind === 'team' && playerTeam ? (
-            <TeamLogo team={playerTeam} size={40} />
+          {save.player.kind === 'team' && team ? (
+            <TeamLogo team={team} size={42} />
           ) : (
             <span className="helmet-mini" style={{ background: `linear-gradient(135deg, ${driver?.helmet ?? '#e10600'}, #101010)` }}>
               <span className="helmet-visor mini" />
@@ -102,26 +151,27 @@ export function CareerScreen({
           <div>
             <strong className="career-name">{save.name}</strong>
             <span className="career-sub">
-              Stagione {save.world.season} · {category ? CATEGORY_LABEL[category] : '—'} · {phaseLabel(save.phase)}
+              Stagione {save.world.season}
+              {category ? ` · ${CATEGORY_LABEL[category]}` : ''} · {phaseLabel(save.phase)}
+              {series ? ` · round ${Math.min(series.roundIndex + 1, series.calendar.length)}/${series.calendar.length}` : ''}
             </span>
           </div>
         </div>
         <div className="career-meta">
-          {series && (
-            <div className="meta-block">
-              <span className="meta-label">Round</span>
-              <span className="meta-value">
-                {Math.min(series.roundIndex + 1, series.calendar.length)}/{series.calendar.length}
-              </span>
-            </div>
-          )}
           <div className="meta-block">
             <span className="meta-label">{isDriver ? 'Patrimonio' : 'Budget'}</span>
             <span className="meta-value">
               <Money value={money} />
             </span>
           </div>
+          <div className="meta-block meta-block-hide-sm">
+            <span className="meta-label">Serie</span>
+            <span className="meta-value">{category ?? '—'}</span>
+          </div>
           <div className="topbar-actions">
+            <button className="icon-btn" onClick={onToggleTheme} title={settings.theme === 'dark' ? 'Passa al tema chiaro' : 'Passa al tema scuro'} aria-label="Cambia tema">
+              {settings.theme === 'dark' ? '☀' : '☾'}
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={saveNow}>
               {savedFlash ? '✓ Salvato' : 'Salva'}
             </button>
@@ -132,41 +182,110 @@ export function CareerScreen({
         </div>
       </header>
 
-      <nav className="career-nav">
-        {tabs.map((item) => (
-          <button key={item.id} className={`nav-item ${tab === item.id ? 'is-active' : ''}`} onClick={() => setTab(item.id)}>
-            <span className="nav-icon">{item.icon}</span>
-            {item.label}
-          </button>
-        ))}
+      <nav className="career-nav" aria-label="Sezioni carriera">
+        {groups.map((group) => {
+          const groupEntries = entries.filter((entry) => entry.group === group);
+          if (groupEntries.length === 0) return null;
+          return (
+            <div key={group} className="nav-group">
+              <span className="nav-group-label">{group}</span>
+              <div className="nav-items">
+                {groupEntries.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`nav-item ${tab === item.id ? 'is-active' : ''}`}
+                    onClick={() => selectTab(item.id)}
+                  >
+                    <span className="nav-icon">{item.icon}</span>
+                    {item.label}
+                    {item.id === 'news' && unread > 0 && <span className="nav-badge">{unread}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </nav>
 
       <main className="career-main">
+        <div className="career-section-head">
+          <div>
+            <p className="eyebrow">{current.group}</p>
+            <h2>{current.label}</h2>
+          </div>
+          {tab !== 'dashboard' && (
+            <button className="btn btn-ghost btn-sm" onClick={() => selectTab('dashboard')}>
+              ← Dashboard
+            </button>
+          )}
+        </div>
+
         {save.phase === 'offseason' && tab === 'dashboard' ? (
           <OffseasonPanel save={save} onUpdate={onUpdate} onOpenMarket={() => setTab('market')} />
         ) : save.phase === 'ended' && tab === 'dashboard' ? (
           <EndedPanel save={save} onMenu={onMenu} />
         ) : tab === 'dashboard' ? (
-          <Dashboard save={save} settings={settings} onUpdate={onUpdate} goTo={setTab} />
+          <Dashboard save={save} settings={settings} onUpdate={onUpdate} goTo={selectTab} />
         ) : tab === 'calendar' ? (
           <CalendarTab save={save} />
         ) : tab === 'standings' ? (
           <StandingsTab save={save} />
         ) : tab === 'market' ? (
           <MarketTab save={save} onUpdate={onUpdate} />
+        ) : tab === 'contracts' ? (
+          <ContractsTab save={save} onUpdate={onUpdate} />
         ) : tab === 'finance' ? (
           <FinanceTab save={save} onUpdate={onUpdate} />
         ) : tab === 'development' ? (
           <DevelopmentTab save={save} onUpdate={onUpdate} />
         ) : tab === 'staff' ? (
           <StaffTab save={save} onUpdate={onUpdate} />
+        ) : tab === 'news' ? (
+          <NewsTab save={save} onUpdate={onUpdate} />
+        ) : tab === 'archive' ? (
+          <ArchiveTab save={save} />
+        ) : tab === 'customize' ? (
+          <CustomizeTab save={save} onUpdate={onUpdate} />
         ) : (
-          <ProfileTab save={save} onUpdate={onUpdate} />
+          <ProfileTab save={save} onUpdate={onUpdate} goTo={selectTab} />
         )}
       </main>
+
+      <nav className="mobile-nav" aria-label="Navigazione rapida">
+        {MOBILE_PRIMARY.map((id) => {
+          const entry = entries.find((item) => item.id === id);
+          if (!entry) return null;
+          return (
+            <button key={id} className={`mobile-nav-item ${tab === id ? 'is-active' : ''}`} onClick={() => selectTab(id)}>
+              <span>{entry.icon}</span>
+              {entry.label}
+            </button>
+          );
+        })}
+        <button className={`mobile-nav-item ${!MOBILE_PRIMARY.includes(tab) ? 'is-active' : ''}`} onClick={() => setMoreOpen(true)}>
+          <span>⋯</span>
+          Altro
+        </button>
+      </nav>
+
+      <Modal open={moreOpen} title="Tutte le sezioni" onClose={() => setMoreOpen(false)}>
+        <div className="sheet-grid">
+          {entries.map((entry) => (
+            <button key={entry.id} className={`sheet-item ${tab === entry.id ? 'is-active' : ''}`} onClick={() => selectTab(entry.id)}>
+              <span className="sheet-icon">{entry.icon}</span>
+              <strong>{entry.label}</strong>
+              <small>{entry.group}</small>
+            </button>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
 
 function Dashboard({
   save,
@@ -191,20 +310,87 @@ function Dashboard({
     : standings.teams.find((row) => row.id === (save.player.kind === 'team' ? save.player.teamId : ''));
   const leaderPoints = isDriver ? standings.drivers[0]?.points ?? 0 : standings.teams[0]?.points ?? 0;
   const snapshot = economicSnapshot(save);
+  const circuit = round ? CIRCUITS.find((entry) => entry.id === round.circuitId) : null;
   const lapsAtPct = round ? Math.max(6, Math.round((round.laps * settings.raceDistance) / 100)) : 0;
+
+  const progression = useMemo(() => {
+    if (!series) return [];
+    const id = save.player.kind === 'driver' ? save.player.driverId : null;
+    const teamId = save.player.kind === 'team' ? save.player.teamId : null;
+    const sorted = series.results.slice().sort((a, b) => a.roundIndex - b.roundIndex);
+    let total = 0;
+    return sorted.map((result) => {
+      total += result.rows
+        .filter((row) => (id ? row.driverId === id : row.teamId === teamId))
+        .reduce((sum, row) => sum + row.points, 0);
+      return total;
+    });
+  }, [series, save.player, save.updatedAt]);
+
+  const recent = useMemo(() => {
+    if (!series) return [];
+    const id = save.player.kind === 'driver' ? save.player.driverId : null;
+    const teamId = save.player.kind === 'team' ? save.player.teamId : null;
+    return series.results
+      .slice()
+      .sort((a, b) => b.roundIndex - a.roundIndex)
+      .slice(0, 6)
+      .reverse()
+      .map((result) => {
+        const rows = result.rows.filter((row) => (id ? row.driverId === id : row.teamId === teamId));
+        return {
+          round: result.roundIndex,
+          position: rows.length ? Math.min(...rows.map((row) => row.position)) : 0,
+          points: rows.reduce((sum, row) => sum + row.points, 0),
+        };
+      });
+  }, [series, save.player, save.updatedAt]);
 
   const enterWeekend = () => {
     const next = beginWeekend(save, settings.raceDistance);
     onUpdate(next, true);
+    toast('Weekend iniziato: qualifiche e strategia pronte', 'info');
   };
 
   const quickSim = () => {
     const next = quickSimulateWeekend(save, settings.raceDistance);
     onUpdate(next, true);
+    toast('Weekend simulato: risultati aggiornati', 'good');
   };
 
   return (
     <div className="dash">
+      <div className="kpi-strip">
+        <Stat
+          label={isDriver ? 'Posizione piloti' : 'Posizione costruttori'}
+          value={myRow ? `P${myRow.position}` : '—'}
+          hint={`su ${isDriver ? standings.drivers.length : standings.teams.length} · ${myRow?.points ?? 0} punti`}
+          accent="var(--accent)"
+        />
+        <Stat
+          label="Distacco dalla vetta"
+          value={myRow ? (leaderPoints <= 0 ? '—' : myRow.position === 1 ? 'Leader' : `−${leaderPoints - myRow.points}`) : '—'}
+          hint="punti"
+          accent="var(--gold)"
+        />
+        <Stat
+          label={isDriver ? 'Patrimonio' : 'Budget'}
+          value={<Money value={isDriver ? (save.player.kind === 'driver' ? save.player.money : 0) : team?.budget ?? 0} />}
+          hint={isDriver ? 'stipendi e bonus' : `saldo/gara ${formatMoney(snapshot.balance)}`}
+          accent="var(--accent-2)"
+        />
+        <Stat
+          label="Prossimo round"
+          value={round ? `${round.index + 1}/${series?.calendar.length ?? 0}` : '—'}
+          hint={round ? t(`circuit.${round.circuitId}`) : 'stagione conclusa'}
+        />
+        {isDriver && driver ? (
+          <Stat label="Punti sviluppo" value={driver.devPoints} hint="abilità da assegnare" accent="var(--info)" />
+        ) : (
+          <Stat label="Progetti attivi" value={team?.projects.length ?? 0} hint="sviluppo monoposto" accent="var(--info)" />
+        )}
+      </div>
+
       <div className="dash-grid">
         <Panel
           className="next-race-panel"
@@ -213,23 +399,36 @@ function Dashboard({
           subtitle={round ? `${t(`circuit.${round.circuitId}`)} · ${circuitCountry(round.circuitId)}` : 'Nessun round rimasto'}
           actions={<Badge tone="info">{settings.raceDistance}% · {lapsAtPct} giri</Badge>}
         >
-          {round ? (
+          {round && circuit ? (
             <>
               <div className="race-hero">
                 <div className="race-hero-number">{String(round.index + 1).padStart(2, '0')}</div>
                 <div className="race-hero-info">
                   <span className="race-hero-label">Prossimo appuntamento</span>
-                  <strong>{t(`circuit.${round.circuitId}`)}</strong>
+                  <strong>{t(round.eventId)}</strong>
                   <span className="muted small">
-                    {countryFlag(circuitCountry(round.circuitId) ? countryIso(round.circuitId) : 'IT')} Gara di{' '}
-                    {round.laps} giri al 100% · meteo variabile
+                    {countryFlag(circuit.country)} {circuitCountry(round.circuitId)} · gara di {round.laps} giri al 100%
                   </span>
                 </div>
                 <div className="race-hero-weather">
                   <span className="weather-icon">☂</span>
-                  <span>{Math.round(rainChance(round.circuitId) * 100)}%</span>
+                  <span>{Math.round(circuit.rainChance * 100)}%</span>
                   <small>pioggia</small>
                 </div>
+              </div>
+              <div className="circuit-traits">
+                <span className="trait">
+                  <span>Degrado gomme</span>
+                  <Bar value={circuit.abrasion * 100} color="var(--warn)" />
+                </span>
+                <span className="trait">
+                  <span>Facilità di sorpasso</span>
+                  <Bar value={circuit.overtaking * 100} color="var(--accent-2)" />
+                </span>
+                <span className="trait">
+                  <span>Perdita ai box</span>
+                  <strong>{circuit.pitLoss}s</strong>
+                </span>
               </div>
               <div className="race-actions">
                 <button className="btn btn-primary btn-lg" onClick={enterWeekend}>
@@ -238,43 +437,75 @@ function Dashboard({
                 <button className="btn btn-ghost" onClick={quickSim} title="Simula qualifiche e gara con la strategia predefinita">
                   Simula subito
                 </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => goTo('calendar')}>
+                  Calendario
+                </button>
               </div>
-              <p className="muted small">
-                Qualifiche, scelta mescole, soste e decisioni in pista. Le gare vengono simulate giro per giro con
-                degrado, meteo, incidenti e Safety Car.
-              </p>
             </>
           ) : (
             <Empty title="Stagione terminata">Passa al mercato per gestire il finale di stagione.</Empty>
           )}
         </Panel>
 
-        <Panel title="Posizione in campionato" subtitle={category ? CATEGORY_LABEL[category] : ''}>
+        <Panel
+          title="Campionato"
+          subtitle={category ? CATEGORY_LABEL[category] : ''}
+          actions={
+            <button className="btn btn-ghost btn-sm" onClick={() => goTo('standings')}>
+              Classifiche
+            </button>
+          }
+        >
           {myRow ? (
-            <div className="standing-summary">
-              <div className="standing-position">
-                <span className="big-position">P{myRow.position}</span>
-                <span className="muted small">su {isDriver ? standings.drivers.length : standings.teams.length}</span>
+            <>
+              <div className="standing-summary">
+                <div className="standing-position">
+                  <span className="big-position">P{myRow.position}</span>
+                  <span className="muted small">su {isDriver ? standings.drivers.length : standings.teams.length}</span>
+                </div>
+                <div className="standing-points">
+                  <strong>{myRow.points}</strong>
+                  <span className="muted small">punti</span>
+                  {myRow.position > 1 && <span className="gap-line">{leaderPoints - myRow.points} dalla vetta</span>}
+                  {myRow.position === 1 && <Badge tone="good">Leader</Badge>}
+                </div>
+                <div className="standing-mini">
+                  <span>Vittorie <strong>{myRow.wins}</strong></span>
+                  <span>Podii <strong>{myRow.podiums}</strong></span>
+                  <span>Pole <strong>{myRow.poles}</strong></span>
+                </div>
               </div>
-              <div className="standing-points">
-                <strong>{myRow.points}</strong>
-                <span className="muted small">punti</span>
-                {myRow.position > 1 && <span className="gap-line">{leaderPoints - myRow.points} punti dalla vetta</span>}
-                {myRow.position === 1 && <Badge tone="good">Leader</Badge>}
-              </div>
-              <div className="standing-mini">
-                <span>Vittorie <strong>{myRow.wins}</strong></span>
-                <span>Podii <strong>{myRow.podiums}</strong></span>
-                <span>Pole <strong>{myRow.poles}</strong></span>
-              </div>
-            </div>
+              {progression.length > 1 ? (
+                <div className="chart-block">
+                  <div className="chart-head">
+                    <span>Punti cumulati</span>
+                    <Badge tone="muted">{progression.length} gare</Badge>
+                  </div>
+                  <Sparkline values={progression} label="Andamento punti" />
+                </div>
+              ) : (
+                <p className="muted small">Il grafico dei punti appare dopo la prima gara.</p>
+              )}
+              {recent.length > 0 && (
+                <div className="form-strip">
+                  <span className="muted small">Ultime gare</span>
+                  <div className="form-chips">
+                    {recent.map((entry) => (
+                      <span key={entry.round} className={`form-chip ${entry.position === 1 ? 'is-win' : entry.position <= 3 ? 'is-podium' : ''}`} title={`Round ${entry.round + 1} · ${entry.points} punti`}>
+                        {entry.position ? `P${entry.position}` : '—'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <Empty title="Nessun dato">La classifica si popola dopo il primo weekend.</Empty>
           )}
         </Panel>
 
         <Panel title="Obiettivo stagionale" accent="var(--gold)">
-          <p className="objective-text">{save.player.kind === 'driver' ? save.player.objective : save.player.objective}</p>
+          <p className="objective-text">{save.player.objective}</p>
           <div className="objective-row">
             <span className="muted small">Target</span>
             <Badge tone="muted">P{save.player.objectiveTarget}</Badge>
@@ -284,15 +515,21 @@ function Dashboard({
               </Badge>
             )}
           </div>
-          {isDriver && driver && (
+          <div className="objective-progress">
+            <Bar
+              value={myRow ? Math.max(0, Math.min(100, (save.player.objectiveTarget / Math.max(1, myRow.position)) * 100)) : 0}
+              color="var(--gold)"
+            />
+            <span className="muted small">
+              {myRow ? `P${myRow.position} su obiettivo P${save.player.objectiveTarget}` : 'In attesa di risultati'}
+            </span>
+          </div>
+          {isDriver && driver && driver.devPoints > 0 && (
             <div className="objective-extra">
-              <span className="muted small">Punti sviluppo disponibili</span>
-              <Badge tone={driver.devPoints > 0 ? 'good' : 'muted'}>{driver.devPoints}</Badge>
-              {driver.devPoints > 0 && (
-                <button className="btn btn-ghost btn-sm" onClick={() => goTo('profile')}>
-                  Migliora abilità
-                </button>
-              )}
+              <Badge tone="good">{driver.devPoints} punti sviluppo</Badge>
+              <button className="btn btn-ghost btn-sm" onClick={() => goTo('profile')}>
+                Migliora abilità
+              </button>
             </div>
           )}
         </Panel>
@@ -300,8 +537,8 @@ function Dashboard({
         <Panel
           title={isDriver ? 'Contratto attivo' : 'Bilancio della scuderia'}
           actions={
-            <button className="btn btn-ghost btn-sm" onClick={() => goTo('finance')}>
-              Dettagli
+            <button className="btn btn-ghost btn-sm" onClick={() => goTo('contracts')}>
+              {isDriver ? 'Contratti' : 'Gestisci'}
             </button>
           }
         >
@@ -319,12 +556,21 @@ function Dashboard({
           )}
         </Panel>
 
-        <Panel className="news-panel" title="Ultime notizie" subtitle="Cronache del paddock">
+        <Panel
+          className="news-panel"
+          title="Ultime notizie"
+          subtitle="Cronache del paddock"
+          actions={
+            <button className="btn btn-ghost btn-sm" onClick={() => goTo('news')}>
+              Tutte
+            </button>
+          }
+        >
           {save.news.length === 0 ? (
             <Empty title="Nessuna notizia">Le notizie compariranno dopo le prime decisioni.</Empty>
           ) : (
             <ul className="news-list">
-              {save.news.slice(0, 7).map((item) => (
+              {save.news.slice(0, 6).map((item) => (
                 <li key={item.id} className={`news-item news-${item.kind}`}>
                   <span className="news-bullet" />
                   <div>
@@ -446,16 +692,53 @@ function CarBars({ team }: { team: NonNullable<ReturnType<typeof playerTeamOf>> 
   );
 }
 
+// ---------------------------------------------------------------------------
+// Calendar
+// ---------------------------------------------------------------------------
+
 function CalendarTab({ save }: { save: SaveGame }) {
   const series = playerSeriesOf(save);
+  const [filter, setFilter] = useState<'all' | 'done' | 'next'>('all');
   if (!series) return <Empty title="Nessun calendario" />;
+  const rows = series.calendar.filter((round) => {
+    const result = series.results.find((r) => r.roundIndex === round.index);
+    if (filter === 'done') return Boolean(result);
+    if (filter === 'next') return !result;
+    return true;
+  });
+  const isDriver = save.player.kind === 'driver';
+  const myDriverId = isDriver && save.player.kind === 'driver' ? save.player.driverId : null;
+  const myTeamId = playerTeamOf(save)?.id ?? null;
+
   return (
-    <Panel title="Calendario stagionale" subtitle={`${series.calendar.length} appuntamenti · ${series.results.length} disputati`}>
+    <Panel
+      title="Calendario stagionale"
+      subtitle={`${series.calendar.length} appuntamenti · ${series.results.length} disputati`}
+      actions={
+        <div className="segmented small">
+          <button className={`seg ${filter === 'all' ? 'is-active' : ''}`} onClick={() => setFilter('all')}>
+            Tutte
+          </button>
+          <button className={`seg ${filter === 'done' ? 'is-active' : ''}`} onClick={() => setFilter('done')}>
+            Disputate
+          </button>
+          <button className={`seg ${filter === 'next' ? 'is-active' : ''}`} onClick={() => setFilter('next')}>
+            Da disputare
+          </button>
+        </div>
+      }
+    >
       <div className="calendar-list">
-        {series.calendar.map((round) => {
+        {rows.map((round) => {
           const result = series.results.find((r) => r.roundIndex === round.index);
-          const isNext = series.roundIndex === round.index;
+          const isNext = series.roundIndex === round.index && !result;
           const winner = result?.rows.find((row) => row.position === 1);
+          const mine = result
+            ? isDriver
+              ? result.rows.find((row) => row.driverId === myDriverId)
+              : result.rows.filter((row) => row.teamId === myTeamId).sort((a, b) => a.position - b.position)[0]
+            : null;
+          const circuit = CIRCUITS.find((entry) => entry.id === round.circuitId);
           return (
             <div key={round.index} className={`calendar-row ${isNext ? 'is-next' : ''} ${result ? 'is-done' : ''}`}>
               <span className="calendar-round">{String(round.index + 1).padStart(2, '0')}</span>
@@ -463,6 +746,7 @@ function CalendarTab({ save }: { save: SaveGame }) {
                 <strong>{t(round.eventId)}</strong>
                 <span className="muted small">
                   {t(`circuit.${round.circuitId}`)} · {circuitCountry(round.circuitId)} · {round.laps} giri
+                  {circuit ? ` · pioggia ${Math.round(circuit.rainChance * 100)}%` : ''}
                 </span>
               </div>
               <div className="calendar-result">
@@ -470,6 +754,7 @@ function CalendarTab({ save }: { save: SaveGame }) {
                   <>
                     <span className="muted small">Vincitore</span>
                     <strong>{winner ? driverName(save.world, winner.driverId) : '—'}</strong>
+                    {mine && <span className="calendar-mine">Tu: P{mine.position} · {mine.points} pt</span>}
                   </>
                 ) : isNext ? (
                   <Badge tone="info">Prossimo</Badge>
@@ -480,16 +765,22 @@ function CalendarTab({ save }: { save: SaveGame }) {
             </div>
           );
         })}
+        {rows.length === 0 && <Empty title="Nessun round" />}
       </div>
     </Panel>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Standings
+// ---------------------------------------------------------------------------
 
 function StandingsTab({ save }: { save: SaveGame }) {
   const [category, setCategory] = useState<Category>(playerCategoryOf(save) ?? 'F1');
   const [view, setView] = useState<'drivers' | 'teams'>('drivers');
   const standings = computeStandings(save.world, category);
   const rows: StandingRow[] = view === 'drivers' ? standings.drivers : standings.teams;
+  const leader = rows[0]?.points ?? 0;
   return (
     <Panel
       title="Classifiche"
@@ -517,60 +808,88 @@ function StandingsTab({ save }: { save: SaveGame }) {
       {rows.length === 0 ? (
         <Empty title="Classifica vuota">Nessun risultato registrato in questa categoria.</Empty>
       ) : (
-        <table className="table standings-table">
-          <thead>
-            <tr>
-              <th>Pos</th>
-              <th>{view === 'drivers' ? 'Pilota' : 'Squadra'}</th>
-              <th className="num">Punti</th>
-              <th className="num">Vittorie</th>
-              <th className="num">Podii</th>
-              <th className="num">Pole</th>
-              <th className="num">Gare</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const isMe =
-                save.player.kind === 'driver'
-                  ? row.id === save.player.driverId
-                  : row.id === (save.player.kind === 'team' ? save.player.teamId : '');
-              const team = view === 'drivers' ? save.world.drivers[row.id]?.teamId : row.id;
-              return (
-                <tr key={row.id} className={isMe ? 'is-me' : ''}>
-                  <td>
-                    <PositionBadge position={row.position} />
-                  </td>
-                  <td>
-                    <div className="table-name">
-                      <TeamDot team={team ? save.world.teams[team] : undefined} />
-                      <span>
-                        {view === 'drivers' ? driverName(save.world, row.id) : teamLabel(save.world, row.id)}
-                        {isMe && <Badge tone="info">Tu</Badge>}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="num strong">{row.points}</td>
-                  <td className="num">{row.wins}</td>
-                  <td className="num">{row.podiums}</td>
-                  <td className="num">{row.poles}</td>
-                  <td className="num">{row.races}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table className="table standings-table">
+            <thead>
+              <tr>
+                <th>Pos</th>
+                <th>{view === 'drivers' ? 'Pilota' : 'Squadra'}</th>
+                <th className="num">Punti</th>
+                <th className="num">Distacco</th>
+                <th className="num">Vittorie</th>
+                <th className="num">Podii</th>
+                <th className="num">Pole</th>
+                <th className="num">Gare</th>
+                <th className="points-track" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const isMe =
+                  save.player.kind === 'driver'
+                    ? row.id === save.player.driverId
+                    : row.id === (save.player.kind === 'team' ? save.player.teamId : '');
+                const team = view === 'drivers' ? save.world.drivers[row.id]?.teamId : row.id;
+                return (
+                  <tr key={row.id} className={isMe ? 'is-me' : ''}>
+                    <td>
+                      <PositionBadge position={row.position} />
+                    </td>
+                    <td>
+                      <div className="table-name">
+                        <TeamDot team={team ? save.world.teams[team] : undefined} />
+                        <span>
+                          {view === 'drivers' ? driverName(save.world, row.id) : teamLabel(save.world, row.id)}
+                          {isMe && <Badge tone="info">Tu</Badge>}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="num strong">{row.points}</td>
+                    <td className="num muted">{leader <= 0 || row.position === 1 ? '—' : `−${leader - row.points}`}</td>
+                    <td className="num">{row.wins}</td>
+                    <td className="num">{row.podiums}</td>
+                    <td className="num">{row.poles}</td>
+                    <td className="num">{row.races}</td>
+                    <td className="points-track">
+                      <Bar value={leader ? (row.points / leader) * 100 : 0} color={isMe ? 'var(--accent)' : 'var(--accent-2)'} height={4} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </Panel>
   );
 }
 
-function ProfileTab({ save, onUpdate }: { save: SaveGame; onUpdate: (next: SaveGame, persist?: boolean) => void }) {
-  if (save.player.kind === 'driver') return <DriverProfile save={save} onUpdate={onUpdate} />;
-  return <TeamProfile save={save} />;
+// ---------------------------------------------------------------------------
+// Profile
+// ---------------------------------------------------------------------------
+
+function ProfileTab({
+  save,
+  onUpdate,
+  goTo,
+}: {
+  save: SaveGame;
+  onUpdate: (next: SaveGame, persist?: boolean) => void;
+  goTo: (tab: Tab) => void;
+}) {
+  if (save.player.kind === 'driver') return <DriverProfile save={save} onUpdate={onUpdate} goTo={goTo} />;
+  return <TeamProfile save={save} goTo={goTo} />;
 }
 
-function DriverProfile({ save, onUpdate }: { save: SaveGame; onUpdate: (next: SaveGame, persist?: boolean) => void }) {
+function DriverProfile({
+  save,
+  onUpdate,
+  goTo,
+}: {
+  save: SaveGame;
+  onUpdate: (next: SaveGame, persist?: boolean) => void;
+  goTo: (tab: Tab) => void;
+}) {
   const driver = playerDriverOf(save);
   const team = playerTeamOf(save);
   if (!driver) return <Empty title="Pilota non trovato" />;
@@ -591,6 +910,7 @@ function DriverProfile({ save, onUpdate }: { save: SaveGame; onUpdate: (next: Sa
         <div className="profile-head">
           <span className="helmet" style={{ background: `linear-gradient(135deg, ${driver.helmet}, #101010)` }}>
             <span className="helmet-visor" />
+            <span className="helmet-number">{driver.number}</span>
           </span>
           <div>
             <div className="preview-tags">
@@ -602,6 +922,11 @@ function DriverProfile({ save, onUpdate }: { save: SaveGame; onUpdate: (next: Sa
               {team ? `Contratto con ${t(team.nameId)}` : 'Attualmente senza contratto'}
               {contract ? ` · fino al ${contract.endSeason}` : ''}
             </p>
+            <div className="profile-kpis">
+              <Stat label="Reputazione" value={Math.round(driver.reputation)} />
+              <Stat label="Morale" value={Math.round(driver.morale)} />
+              <Stat label="Punti sviluppo" value={driver.devPoints} />
+            </div>
           </div>
         </div>
         <div className="skill-list">
@@ -613,7 +938,10 @@ function DriverProfile({ save, onUpdate }: { save: SaveGame; onUpdate: (next: Sa
                 <button
                   className="btn btn-mini btn-primary"
                   disabled={driver.devPoints <= 0 || driver.skills[skill.key] >= 99}
-                  onClick={() => onUpdate(spendSkillPoint(save, skill.key), true)}
+                  onClick={() => {
+                    onUpdate(spendSkillPoint(save, skill.key), true);
+                    toast(`${skill.label} migliorata`, 'good');
+                  }}
                 >
                   +1
                 </button>
@@ -625,6 +953,9 @@ function DriverProfile({ save, onUpdate }: { save: SaveGame; onUpdate: (next: Sa
         <div className="dev-points">
           <Badge tone={driver.devPoints > 0 ? 'good' : 'muted'}>{driver.devPoints} punti sviluppo</Badge>
           <span className="muted small">Ogni 100 XP guadagni un punto abilità.</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => goTo('customize')}>
+            Cambia casco e numero
+          </button>
         </div>
       </Panel>
 
@@ -634,30 +965,32 @@ function DriverProfile({ save, onUpdate }: { save: SaveGame; onUpdate: (next: Sa
         </Panel>
         <Panel title="Palmarès e carriera">
           {save.player.kind === 'driver' && save.player.seasonHistory.length > 0 ? (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Stagione</th>
-                  <th>Serie</th>
-                  <th>Squadra</th>
-                  <th className="num">Pos</th>
-                  <th className="num">Punti</th>
-                  <th>Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {save.player.seasonHistory.map((record) => (
-                  <tr key={`${record.season}-${record.category}`}>
-                    <td>{record.season}</td>
-                    <td>{record.category === 'none' ? '—' : record.category}</td>
-                    <td>{record.teamId ? teamLabel(save.world, record.teamId) : '—'}</td>
-                    <td className="num">P{record.position}</td>
-                    <td className="num strong">{record.points}</td>
-                    <td>{record.note}</td>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Stagione</th>
+                    <th>Serie</th>
+                    <th>Squadra</th>
+                    <th className="num">Pos</th>
+                    <th className="num">Punti</th>
+                    <th>Note</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {save.player.seasonHistory.map((record) => (
+                    <tr key={`${record.season}-${record.category}`}>
+                      <td>{record.season}</td>
+                      <td>{record.category === 'none' ? '—' : record.category}</td>
+                      <td>{record.teamId ? teamLabel(save.world, record.teamId) : '—'}</td>
+                      <td className="num">P{record.position}</td>
+                      <td className="num strong">{record.points}</td>
+                      <td>{record.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <Empty title="Nessuna stagione conclusa">Il palmarès si popola al termine della prima stagione.</Empty>
           )}
@@ -687,7 +1020,7 @@ function SeasonStats({ save }: { save: SaveGame }) {
   );
 }
 
-function TeamProfile({ save }: { save: SaveGame }) {
+function TeamProfile({ save, goTo }: { save: SaveGame; goTo: (tab: Tab) => void }) {
   const team = playerTeamOf(save);
   if (!team) return <Empty title="Scuderia non trovata" />;
   const standings = computeStandings(save.world, team.category);
@@ -696,7 +1029,7 @@ function TeamProfile({ save }: { save: SaveGame }) {
     <div className="two-col">
       <Panel title={t(team.nameId)} subtitle={`${CATEGORY_LABEL[team.category]} · ${t(team.shortId)} · fondata nel ${save.world.season - team.history.length}`}>
         <div className="team-profile-head">
-          <TeamLogo team={team} size={64} />
+          <TeamLogo team={team} size={68} />
           <div>
             <div className="preview-tags">
               <Badge tone="info">{CATEGORY_LABEL[team.category]}</Badge>
@@ -706,6 +1039,9 @@ function TeamProfile({ save }: { save: SaveGame }) {
             <p className="muted small">
               Motore: {t(`engine.${team.engineId}`)} · {team.staff.length} membri dello staff · {team.driverIds.filter(Boolean).length} piloti
             </p>
+            <button className="btn btn-ghost btn-sm" onClick={() => goTo('customize')}>
+              Personalizza livrea
+            </button>
           </div>
         </div>
         <h4 className="subhead">Monoposto</h4>
@@ -810,23 +1146,6 @@ function EndedPanel({ save, onMenu }: { save: SaveGame; onMenu: () => void }) {
   );
 }
 
-function countryIso(circuitId: string): string {
-  const map: Record<string, string> = {
-    sakhir: 'BH', jeddah: 'SA', melbourne: 'AU', suzuka: 'JP', shanghai: 'CN', imola: 'IT', monaco: 'MC',
-    catalunya: 'ES', montreal: 'CA', spielberg: 'AT', silverstone: 'GB', spa: 'BE', hungaroring: 'HU',
-    zandvoort: 'NL', monza: 'IT', baku: 'AZ', marinabay: 'SG', austin: 'US', mexico: 'MX', interlagos: 'BR',
-    vegas: 'US', lusail: 'QA', yasmarina: 'AE',
-  };
-  return map[circuitId] ?? 'IT';
-}
-
-function rainChance(circuitId: string): number {
-  const map: Record<string, number> = {
-    sakhir: 0.05, jeddah: 0.08, melbourne: 0.28, suzuka: 0.3, shanghai: 0.25, imola: 0.22, monaco: 0.18,
-    catalunya: 0.12, montreal: 0.25, spielberg: 0.3, silverstone: 0.42, spa: 0.45, hungaroring: 0.2,
-    zandvoort: 0.32, monza: 0.15, baku: 0.1, marinabay: 0.35, austin: 0.18, mexico: 0.15, interlagos: 0.5,
-    vegas: 0.04, lusail: 0.02, yasmarina: 0.02,
-  };
-  return map[circuitId] ?? 0.15;
-}
-
+void MiniBars;
+void formatGap;
+void driverFullName;
